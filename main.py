@@ -1,21 +1,15 @@
 import os
 import re
 import requests
-import threading
 import asyncio
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Retrieve Token from environment variables
+# Retrieve variables from settings
 TOKEN = os.getenv("BOT_TOKEN")
-
-# --- Tiny Web Server to keep Render Free Tier Happy ---
-def run_dummy_server():
-    port = int(os.getenv("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-    print(f"Dummy web server running on port {port}...")
-    server.serve_forever()
+# Make sure to replace this URL with your exact Render Web URL from Step 1!
+RENDER_URL = "https://send-and-end-it.onrender.com" 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
@@ -52,35 +46,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         print(f"Error: {e}")
         await processing_msg.edit_text("⚠️ An error occurred while processing. Please try again later.")
 
-async def start_bot():
+async def main():
     if not TOKEN:
         print("Error: BOT_TOKEN variable is missing!")
         return
 
-    # Start the dummy web server in a separate background thread
-    threading.Thread(target=run_dummy_server, daemon=True).start()
+    # Clean up trailing slash if present
+    base_url = RENDER_URL.rstrip('/')
+    port = int(os.getenv("PORT", 8080))
 
-    # Build and start the Telegram Bot application
+    # Build the Application
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("Bot is up and running...")
-    
-    # Correct way to start polling in modern Python loops
+
+    # Initialize application
     await app.initialize()
-    await app.updater.start_polling()
-    await app.start()
     
-    # Keep running indefinitely
+    # Start the webhook listening server directly on Render's assigned port
+    print(f"Starting webhook receiver on port {port}...")
+    await app.updater.start_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=TOKEN,
+        webhook_url=f"{base_url}/{TOKEN}"
+    )
+    
+    await app.start()
+    print("Bot Webhook is fully live and listening!")
+
+    # Keep running
     while True:
         await asyncio.sleep(3600)
 
-def main():
-    # Explicitly set up and run the event loop for Python 3.14+ compatibility
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_bot())
-
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
