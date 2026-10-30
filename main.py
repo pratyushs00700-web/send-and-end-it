@@ -1,23 +1,19 @@
 import os
 import re
 import requests
-from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
-app = Flask(__name__)
 
-# Create the standard Telegram Application worker
-telegram_app = Application.builder().token(TOKEN).build()
-
-async def start_command(update: Update, context) -> None:
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "👋 Welcome! Send me any DiskWala, TeraBox, or Flezen video link, "
         "and I will generate a clean direct download link for you instantly!"
     )
 
-async def handle_message(update: Update, context) -> None:
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_url = update.message.text.strip()
     
     if not re.match(r'^https?://', user_url):
@@ -46,36 +42,32 @@ async def handle_message(update: Update, context) -> None:
         print(f"Error: {e}")
         await processing_msg.edit_text("⚠️ An error occurred while processing. Please try again later.")
 
-# Register handlers
-telegram_app.add_handler(CommandHandler("start", start_command))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+async def main():
+    if not TOKEN:
+        print("Error: BOT_TOKEN variable is missing!")
+        return
 
-@app.route("/", methods=["GET"])
-def index():
-    return "Bot server is running perfectly!", 200
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(telegram_app.initialize())
-        loop.run_until_complete(telegram_app.process_update(update))
-        loop.close()
-    return "ok", 200
-
-# This triggers immediately upon loading to force-activate the webhook
-if TOKEN:
-    try:
-        webhook_url = f"https://onrender.com{TOKEN}"
-        activation_api = f"https://telegram.org{TOKEN}/setWebhook?url={webhook_url}"
-        req = requests.get(activation_api, timeout=10)
-        print(f"Telegram Activation Server Response: {req.text}")
-    except Exception as err:
-        print(f"Failed to auto-activate webhook: {err}")
+    # Create the standard Telegram Application worker
+    app = Application.builder().token(TOKEN).build()
+    
+    # Register handlers
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    print("Initializing bot...")
+    await app.initialize()
+    
+    # This automatically drops any stuck messages from your previous attempts!
+    print("Clearing stuck webhooks and updates...")
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    
+    print("Bot is up and running securely via polling...")
+    await app.updater.start_polling()
+    await app.start()
+    
+    # Keep the server running cleanly
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    asyncio.run(main())
