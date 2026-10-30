@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import threading
+import asyncio
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -51,7 +52,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         print(f"Error: {e}")
         await processing_msg.edit_text("⚠️ An error occurred while processing. Please try again later.")
 
-def main():
+async def start_bot():
     if not TOKEN:
         print("Error: BOT_TOKEN variable is missing!")
         return
@@ -65,7 +66,21 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("Bot is up and running...")
-    app.run_polling()
+    
+    # Correct way to start polling in modern Python loops
+    await app.initialize()
+    await app.updater.start_polling()
+    await app.start()
+    
+    # Keep running indefinitely
+    while True:
+        await asyncio.sleep(3600)
+
+def main():
+    # Explicitly set up and run the event loop for Python 3.14+ compatibility
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(start_bot())
 
 if __name__ == "__main__":
     main()
