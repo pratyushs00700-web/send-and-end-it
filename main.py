@@ -47,27 +47,28 @@ async def main():
         print("Error: BOT_TOKEN variable is missing!")
         return
 
-    # Create the standard Telegram Application worker
+    # Force Telegram to instantly clear any stuck webhooks before starting
+    print("Clearing stuck connections from Telegram...")
+    try:
+        clear_url = f"https://telegram.org{TOKEN}/deleteWebhook?drop_pending_updates=true"
+        requests.get(clear_url, timeout=10)
+        print("Telegram cache cleared successfully!")
+    except Exception as e:
+        print(f"Failed to clear cache: {e}")
+
+    # Build the Application
     app = Application.builder().token(TOKEN).build()
-    
-    # Register handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Initializing bot...")
+    print("Bot is booting up cleanly via polling...")
     await app.initialize()
-    
-    # This automatically drops any stuck messages from your previous attempts!
-    print("Clearing stuck webhooks and updates...")
-    await app.bot.delete_webhook(drop_pending_updates=True)
-    
-    print("Bot is up and running securely via polling...")
     await app.updater.start_polling()
     await app.start()
     
-    # Keep the server running cleanly
     while True:
         await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
