@@ -1,11 +1,20 @@
 import os
 import re
 import requests
+import threading
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Retrieve Token from environment variables (for security)
+# Retrieve Token from environment variables
 TOKEN = os.getenv("BOT_TOKEN")
+
+# --- Tiny Web Server to keep Render Free Tier Happy ---
+def run_dummy_server():
+    port = int(os.getenv("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    print(f"Dummy web server running on port {port}...")
+    server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
@@ -16,7 +25,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_url = update.message.text.strip()
     
-    # Simple check if the message is a valid URL
     if not re.match(r'^https?://', user_url):
         await update.message.reply_text("❌ Please send a valid video link.")
         return
@@ -24,15 +32,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     processing_msg = await update.message.reply_text("🔄 Processing your link... Please wait...")
 
     try:
-        # We use a public, free multi-bypass API to process the link safely without server lag
         api_url = f"https://workers.dev{user_url}"
         response = requests.get(api_url, timeout=15)
         data = response.json()
 
         if response.status_code == 200 and data.get("status") == "success":
             direct_link = data.get("bypassed_url")
-            
-            # Send the clean link back to the user
             await processing_msg.edit_text(
                 f"✅ **Link Bypassed Successfully!**\n\n"
                 f"🚀 [Click Here to Stream or Download Your Video]({direct_link})",
@@ -51,9 +56,11 @@ def main():
         print("Error: BOT_TOKEN variable is missing!")
         return
 
+    # Start the dummy web server in a separate background thread
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
     # Build and start the Telegram Bot application
     app = Application.builder().token(TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
