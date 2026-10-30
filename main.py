@@ -6,10 +6,9 @@ from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
-
 app = Flask(__name__)
 
-# Create the standard Telegram Application worker without starting loops manually
+# Create the standard Telegram Application worker
 telegram_app = Application.builder().token(TOKEN).build()
 
 async def start_command(update: Update, context) -> None:
@@ -57,36 +56,25 @@ def index():
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    # Handle incoming messages from Telegram
     if request.method == "POST":
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        
-        # Process the update inside a running event loop securely
         import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(telegram_app.initialize())
         loop.run_until_complete(telegram_app.process_update(update))
         loop.close()
-        
     return "ok", 200
 
-# Initialize Webhook on startup
-def set_webhook():
-    if TOKEN:
-        bot = Bot(token=TOKEN)
-        url = f"https://onrender.com{TOKEN}"
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(bot.set_webhook(url=url))
-            print("Webhook set successfully!")
-        except Exception as e:
-            print(f"Error setting webhook: {e}")
-        loop.close()
-
-set_webhook()
+# This triggers immediately upon loading to force-activate the webhook
+if TOKEN:
+    try:
+        webhook_url = f"https://onrender.com{TOKEN}"
+        activation_api = f"https://telegram.org{TOKEN}/setWebhook?url={webhook_url}"
+        req = requests.get(activation_api, timeout=10)
+        print(f"Telegram Activation Server Response: {req.text}")
+    except Exception as err:
+        print(f"Failed to auto-activate webhook: {err}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
